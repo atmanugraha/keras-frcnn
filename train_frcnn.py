@@ -106,18 +106,19 @@ val_imgs = [s for s in all_imgs if s['imageset'] == 'test']
 print('Num train samples {}'.format(len(train_imgs)))
 print('Num val samples {}'.format(len(val_imgs)))
 
+print(K.image_data_format())
+print('###--Image Data Format--###')
 
-data_gen_train = data_generators.get_anchor_gt(train_imgs, classes_count, C, nn.get_img_output_length, K.image_dim_ordering(), mode='train')
-data_gen_val = data_generators.get_anchor_gt(val_imgs, classes_count, C, nn.get_img_output_length,K.image_dim_ordering(), mode='val')
+data_gen_train = data_generators.get_anchor_gt(train_imgs, classes_count, C, nn.get_img_output_length, K.image_data_format(), mode='train')
+data_gen_val = data_generators.get_anchor_gt(val_imgs, classes_count, C, nn.get_img_output_length,K.image_data_format(), mode='val')
 
-if K.image_dim_ordering() == 'th':
+if K.image_data_format() == 'channels_first':
 	input_shape_img = (3, None, None)
 else:
 	input_shape_img = (None, None, 3)
 
 img_input = Input(shape=input_shape_img)
 roi_input = Input(shape=(None, 4))
-
 # define the base network (resnet here, can be VGG, Inception, etc)
 shared_layers = nn.nn_base(img_input, trainable=True)
 
@@ -181,13 +182,11 @@ for epoch_num in range(num_epochs):
 			X, Y, img_data = next(data_gen_train)
 
 			loss_rpn = model_rpn.train_on_batch(X, Y)
-
 			P_rpn = model_rpn.predict_on_batch(X)
 
-			R = roi_helpers.rpn_to_roi(P_rpn[0], P_rpn[1], C, K.image_dim_ordering(), use_regr=True, overlap_thresh=0.7, max_boxes=300)
+			R = roi_helpers.rpn_to_roi(P_rpn[0], P_rpn[1], C, K.image_data_format(), use_regr=True, overlap_thresh=0.7, max_boxes=300)
 			# note: calc_iou converts from (x1,y1,x2,y2) to (x,y,w,h) format
 			X2, Y1, Y2, IouS = roi_helpers.calc_iou(R, img_data, C, class_mapping)
-
 			if X2 is None:
 				rpn_accuracy_rpn_monitor.append(0)
 				rpn_accuracy_for_epoch.append(0)
@@ -205,7 +204,6 @@ for epoch_num in range(num_epochs):
 				pos_samples = pos_samples[0]
 			else:
 				pos_samples = []
-			
 			rpn_accuracy_rpn_monitor.append(len(pos_samples))
 			rpn_accuracy_for_epoch.append((len(pos_samples)))
 
@@ -228,9 +226,7 @@ for epoch_num in range(num_epochs):
 					sel_samples = random.choice(neg_samples)
 				else:
 					sel_samples = random.choice(pos_samples)
-
 			loss_class = model_classifier.train_on_batch([X, X2[:, sel_samples, :]], [Y1[:, sel_samples, :], Y2[:, sel_samples, :]])
-
 			losses[iter_num, 0] = loss_rpn[1]
 			losses[iter_num, 1] = loss_rpn[2]
 
@@ -240,7 +236,6 @@ for epoch_num in range(num_epochs):
 
 			progbar.update(iter_num+1, [('rpn_cls', losses[iter_num, 0]), ('rpn_regr', losses[iter_num, 1]),
 									  ('detector_cls', losses[iter_num, 2]), ('detector_regr', losses[iter_num, 3])])
-
 			iter_num += 1
 			
 			if iter_num == epoch_length:
